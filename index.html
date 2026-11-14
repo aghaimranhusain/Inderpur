@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Land Properties Register</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<style>
+:root{--bg:#faf7f2;--card:#fff;--tx:#2a2620;--mut:#7a7164;--ac:#2f6b3f;--acx:#fff;--bd:#e4ddd0;--dn:#b3402f;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1915;--card:#26231e;--tx:#ece6da;--mut:#a39a8a;--ac:#6fbf82;--acx:#10200f;--bd:#3a362e;--dn:#e57d6c}}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 Georgia,'Times New Roman',serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:26px;margin:0 0 2px}.sub{color:var(--mut);margin:0 0 18px;font-family:system-ui,sans-serif;font-size:14px}
+button,input,select,textarea{font:14px system-ui,sans-serif;color:var(--tx)}
+button{border:1px solid var(--bd);background:var(--card);padding:7px 12px;border-radius:8px;cursor:pointer}
+button.p{background:var(--ac);color:var(--acx);border-color:var(--ac)}button.d{color:var(--dn)}
+button:hover{filter:brightness(.96)}
+input,select,textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--card)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}.bar input,.bar select{width:auto;flex:1;min-width:140px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.st{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px 14px}.st b{display:block;font-size:22px}.st span{color:var(--mut);font:12px system-ui,sans-serif}
+.tw{overflow-x:auto;background:var(--card);border:1px solid var(--bd);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:760px;font-family:system-ui,sans-serif;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--bd);vertical-align:top}th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase}
+td .acts{display:flex;gap:5px;flex-wrap:wrap}td .acts button{padding:4px 8px;font-size:12px}
+.tag{display:inline-block;background:var(--bd);border-radius:20px;padding:1px 9px;font-size:12px}
+dialog{border:1px solid var(--bd);border-radius:14px;background:var(--bg);color:var(--tx);width:min(640px,94vw);padding:20px;max-height:90vh}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:10px}.g .w{grid-column:1/-1}
+label{font:12px system-ui,sans-serif;color:var(--mut);display:block;margin-bottom:2px}
+.row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.empty{text-align:center;color:var(--mut);padding:30px}
+.note{font:12px system-ui,sans-serif;color:var(--mut);margin-top:14px}
+@media(max-width:520px){.g{grid-template-columns:1fr}}
+</style></head><body><main>
+<h1>Land Properties Register</h1>
+<p class="sub">Ancestral properties by village, with area, co-owners, location and documents.</p>
+<p class="note" id="sync" style="margin:0 0 12px"></p>
+<div class="stats" id="stats"></div>
+<div class="bar">
+<input id="q" placeholder="Search name, village, owner, survey no.">
+<select id="vf"></select>
+<button class="p" id="kh">Upload khatauni (auto-fill)</button><input type="file" id="khf" accept="application/pdf,image/*" hidden>
+<button id="add">+ Add manually</button>
+<button id="xl">Export Excel</button>
+<button id="imp">Import Excel</button>
+<input type="file" id="impf" accept=".xlsx,.xls,.csv" hidden>
+<button id="gs">Settings</button>
+</div>
+<div class="tw"><table><thead><tr><th>Property</th><th>Village / District</th><th>Khewat / Khasra</th><th>Area</th><th>Co-owners</th><th>Documents</th><th></th></tr></thead><tbody id="tb"></tbody></table></div>
+<p class="note">With GitHub connected, details and files are saved in your private data repository. Use Export Excel as an extra backup.</p>
+
+<dialog id="dlg"><form method="dialog" id="fm" onsubmit="return false">
+<h3 id="dt" style="margin-top:0"></h3><div id="st2" class="note" style="margin:0 0 10px"></div>
+<div class="g">
+<div class="w"><label>Property name / label *</label><input id="name"></div>
+<div><label>Village *</label><input id="village"></div>
+<div><label>Tehsil</label><input id="tehsil"></div>
+<div><label>District</label><input id="district"></div>
+<div><label>State</label><input id="state"></div>
+<div><label>Khewat / Khasra / Survey no.</label><input id="survey"></div>
+<div><label>Area</label><input id="area" type="number" step="any" min="0"></div>
+<div><label>Unit</label><select id="unit"><option>Kanal-Marla</option><option>Bigha</option><option>Acre</option><option>Hectare</option><option>Killa</option><option>Sq. yard</option><option>Sq. ft</option></select></div>
+<div class="w"><label>Co-owners / partners (one name per line)</label><textarea id="owners" rows="4"></textarea></div>
+<div class="w"><label>Location (Google Maps link or lat, long)</label><input id="loc"></div>
+<div class="w"><label>Notes (mutation, disputes, share details...)</label><textarea id="notes" rows="2"></textarea></div>
+<div><label>Land record (PDF)</label><input type="file" id="pdf" accept="application/pdf,image/*"></div>
+<div><label>Map of the record (image/PDF)</label><input type="file" id="map" accept="application/pdf,image/*"></div>
+</div>
+<div class="row"><button type="button" id="cn">Cancel</button><button type="button" class="p" id="sv">Save</button></div>
+</form></dialog>
+
+<dialog id="gd"><h3 style="margin-top:0">Settings</h3>
+<div class="g"><div class="w"><label>GitHub data repository (username/repo)</label><input id="g_repo" placeholder="yourname/land-data"></div>
+<div><label>Branch</label><input id="g_br"></div>
+<div><label>GitHub token (Contents: read and write)</label><input id="g_tok" type="password"></div></div>
+<p class="note">The token is kept only in this browser. Use a token limited to the data repository.</p>
+<div class="row"><button type="button" id="g_cn">Cancel</button><button type="button" class="p" id="g_sv">Save</button></div></dialog>
+<dialog id="vw"><div id="vc"></div><div class="row"><button id="vx">Close</button></div></dialog>
+
+<script>
+let P=[],edit=null;const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let cfg={},sha=null,chain=Promise.resolve();
+try{cfg=JSON.parse(localStorage.getItem('lp_gh')||'{}')}catch(e){}
+const gh=()=>cfg.repo&&cfg.token;
+const b64s=t=>btoa(unescape(encodeURIComponent(t))),dec=t=>decodeURIComponent(escape(atob(t.replace(/\n/g,''))));
+const b64b=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result.split(',')[1]);f.readAsDataURL(b)});
+function setSync(t,bad){const e=$('sync');e.textContent=t;e.style.color=bad?'var(--dn)':'var(--mut)'}
+async function api(m,path,body,raw){const r=await fetch('https://api.github.com/repos/'+cfg.repo+'/'+path,{method:m,headers:{Authorization:'Bearer '+cfg.token,Accept:raw?'application/vnd.github.raw+json':'application/vnd.github+json'},body:body?JSON.stringify(body):undefined});
+ if(!r.ok){const e=new Error(r.status+' '+(await r.text()).slice(0,120));e.status=r.status;throw e}return raw?r.blob():r.json()}
+function load(){try{P=JSON.parse(localStorage.getItem('lp_props')||'[]')}catch(e){P=[]}}
+function save(){try{localStorage.setItem('lp_props',JSON.stringify(P))}catch(e){}
+ if(gh())chain=chain.then(push).catch(e=>setSync('Could not save to GitHub: '+e.message,1))}
+async function push(){setSync('Saving to GitHub...');const r=await api('PUT','contents/data.json',{message:'Update properties',content:b64s(JSON.stringify(P,null,1)),branch:cfg.branch||'main',...(sha?{sha}:{})});sha=r.content.sha;setSync('Saved to GitHub ('+cfg.repo+')')}
+async function init(){if(!gh()){setSync('Not connected to GitHub: data is saved in this browser only. Open Settings to connect.',1);return}
+ try{setSync('Loading from GitHub...');const m=await api('GET','contents/data.json?ref='+(cfg.branch||'main'));sha=m.sha;P=JSON.parse(dec(m.content));try{localStorage.setItem('lp_props',JSON.stringify(P))}catch(e){}render();setSync('Connected to GitHub ('+cfg.repo+')')}
+ catch(e){if(e.status===404){sha=null;setSync('Connected. No data file yet.');if(P.length)save()}else setSync('GitHub error: '+e.message,1)}}
+let dbp;function db(){if(!dbp)dbp=new Promise((res,rej)=>{try{const r=indexedDB.open('lp_files',1);r.onupgradeneeded=()=>r.result.createObjectStore('f');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}});return dbp}
+const EXT={'application/pdf':'pdf','image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif'};
+async function fput(k,b){if(gh()){try{const path='files/'+k.replace(':','-')+'-'+Date.now().toString(36)+'.'+(EXT[b.type]||'bin');
+  await api('PUT','contents/'+path,{message:'Add file',content:await b64b(b),branch:cfg.branch||'main'});return path}catch(e){setSync('File upload failed: '+e.message,1);return false}}
+ try{const d=await db();return new Promise(r=>{const t=d.transaction('f','readwrite');t.objectStore('f').put(b,k);t.oncomplete=()=>r(k);t.onerror=()=>r(false)})}catch(e){return false}}
+async function fget(k){if(gh()&&k.startsWith('files/')){try{const b=await api('GET','contents/'+k+'?ref='+(cfg.branch||'main'),null,true);return new Blob([b],{type:/\.pdf$/.test(k)?'application/pdf':/\.png$/.test(k)?'image/png':/\.jpg$/.test(k)?'image/jpeg':b.type})}catch(e){return null}}
+ try{const d=await db();return new Promise(r=>{const q=d.transaction('f').objectStore('f').get(k);q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)})}catch(e){return null}}
+async function fdel(k){if(gh()&&k.startsWith('files/')){try{const m=await api('GET','contents/'+k+'?ref='+(cfg.branch||'main'));await api('DELETE','contents/'+k,{message:'Delete file',sha:m.sha,branch:cfg.branch||'main'})}catch(e){}return}
+ try{const d=await db();d.transaction('f','readwrite').objectStore('f').delete(k)}catch(e){}}
+const ow=p=>(p.owners||'').split('\n').map(s=>s.trim()).filter(Boolean);
+function render(){
+ const q=$('q').value.toLowerCase(),vf=$('vf').value;
+ const vs=[...new Set(P.map(p=>p.village).filter(Boolean))].sort();
+ $('vf').innerHTML='<option value="">All villages</option>'+vs.map(v=>`<option${v===vf?' selected':''}>${esc(v)}</option>`).join('');
+ const L=P.filter(p=>(!vf||p.village===vf)&&(!q||[p.name,p.village,p.tehsil,p.district,p.survey,p.owners].join(' ').toLowerCase().includes(q)));
+ const tot={};P.forEach(p=>{if(p.area)tot[p.unit]=(tot[p.unit]||0)+ +p.area});
+ const names=new Set();P.forEach(p=>ow(p).forEach(n=>names.add(n.toLowerCase())));
+ $('stats').innerHTML=`<div class="st"><b>${P.length}</b><span>Properties</span></div><div class="st"><b>${vs.length}</b><span>Villages</span></div><div class="st"><b>${names.size}</b><span>Distinct people named</span></div><div class="st"><b style="font-size:15px">${Object.entries(tot).map(([u,a])=>+a.toFixed(3)+' '+esc(u)).join('<br>')||'-'}</b><span>Total area</span></div>`;
+ $('tb').innerHTML=L.length?L.map(p=>`<tr><td><b>${esc(p.name)}</b></td><td>${esc(p.village)}<br><small>${esc([p.tehsil,p.district,p.state].filter(Boolean).join(', '))}</small></td><td>${esc(p.survey)||'-'}</td><td>${p.area?esc(p.area)+' '+esc(p.unit):'-'}</td><td><span class="tag">${ow(p).length}</span></td><td><div class="acts"><button onclick="openF('${p.id}','pdf')"${p.hasPdf?'':' disabled'}>Record</button><button onclick="openF('${p.id}','map')"${p.hasMap?'':' disabled'}>Map</button></div></td><td><div class="acts"><button onclick="view('${p.id}')">Details</button><button onclick="ed('${p.id}')">Edit</button><button class="d" onclick="del('${p.id}')">Delete</button></div></td></tr>`).join(''):'<tr><td colspan="7" class="empty">No properties yet. Click “Add property” or import an Excel file.</td></tr>';
+}
+async function openF(id,t){const q=P.find(x=>x.id===id);const b=await fget(q[t+'Path']||id+':'+t);if(!b){alert('File not found in this browser.');return}
+ const u=URL.createObjectURL(b);const w=window.open(u,'_blank');if(!w){const a=document.createElement('a');a.href=u;a.download=id+'-'+t;a.click()}}
+function view(id){const p=P.find(x=>x.id===id);const o=ow(p);
+ const m=p.loc?(/^https?:/.test(p.loc)?p.loc:'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(p.loc)):'';
+ $('vc').innerHTML=`<h3 style="margin-top:0">${esc(p.name)}</h3><p>${esc(p.village)}${p.tehsil?', '+esc(p.tehsil):''}${p.district?', '+esc(p.district):''}${p.state?', '+esc(p.state):''}</p><p><b>Khewat/Khasra:</b> ${esc(p.survey)||'-'}<br><b>Area:</b> ${p.area?esc(p.area)+' '+esc(p.unit):'-'}<br><b>Co-owners (${o.length}):</b></p><ol>${o.map(n=>`<li>${esc(n)}</li>`).join('')}</ol>${m?`<p><a href="${esc(m)}" target="_blank" rel="noopener">Open location in Maps</a></p>`:''}${p.notes?`<p><b>Notes:</b> ${esc(p.notes)}</p>`:''}`;
+ $('vw').showModal()}
+const F=['name','village','tehsil','district','state','survey','area','unit','owners','loc','notes'];
+let pend=null;function ed(id){pend=null;$('st2').textContent='';edit=id;const p=id?P.find(x=>x.id===id):{};$('dt').textContent=id?'Edit property':'Add property';
+ F.forEach(f=>$(f).value=p[f]??(f==='unit'?'Kanal-Marla':''));$('pdf').value='';$('map').value='';$('dlg').showModal()}
+async function sv(){const p=edit?P.find(x=>x.id===edit):{id:'p'+Date.now().toString(36)};
+ const v={};F.forEach(f=>v[f]=$(f).value.trim());
+ if(!v.name||!v.village){alert('Name and village are required.');return}
+ Object.assign(p,v);
+ for(const [k,key,flag] of [['pdf','pdf','hasPdf'],['map','map','hasMap']]){const f=$(k).files[0];if(f){const pt=await fput(p.id+':'+key,f);if(pt){p[flag]=true;p[key+'Path']=pt}else alert('Could not store '+f.name)}}
+ if(pend&&!$('pdf').files[0]){const pt=await fput(p.id+':pdf',pend);if(pt){p.hasPdf=true;p.pdfPath=pt}}pend=null;
+ if(!edit)P.push(p);save();$('dlg').close();render()}
+async function del(id){if(!confirm('Delete this property and its files?'))return;const q=P.find(p=>p.id===id);P=P.filter(p=>p.id!==id);await fdel(q.pdfPath||id+':pdf');await fdel(q.mapPath||id+':map');save();render()}
+function exp(){if(!P.length){alert('Nothing to export.');return}
+ const rows=P.map(p=>({'Property':p.name,'Village':p.village,'Tehsil':p.tehsil,'District':p.district,'State':p.state,'Khewat/Khasra':p.survey,'Area':p.area,'Unit':p.unit,'No. of Co-owners':ow(p).length,'Co-owners':ow(p).join('; '),'Location':p.loc,'Notes':p.notes,'Land Record Attached':p.hasPdf?'Yes':'No','Map Attached':p.hasMap?'Yes':'No'}));
+ const ws=XLSX.utils.json_to_sheet(rows);ws['!cols']=Object.keys(rows[0]).map(k=>({wch:Math.max(14,k.length+2)}));
+ const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Properties');XLSX.writeFile(wb,'land-properties.xlsx')}
+function imp(f){const r=new FileReader();r.onload=e=>{try{const wb=XLSX.read(e.target.result,{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);let n=0;
+ rows.forEach(x=>{if(!x['Property']&&!x['Village'])return;P.push({id:'p'+Date.now().toString(36)+n++,name:x['Property']||x['Village'],village:x['Village']||'',tehsil:x['Tehsil']||'',district:x['District']||'',state:x['State']||'',survey:String(x['Khewat/Khasra']??''),area:x['Area']??'',unit:x['Unit']||'Kanal-Marla',owners:String(x['Co-owners']||'').split(/;|\n/).map(s=>s.trim()).filter(Boolean).join('\n'),loc:x['Location']||'',notes:x['Notes']||''})});
+ save();render();alert(n+' properties imported.')}catch(err){alert('Could not read that file.')}};r.readAsArrayBuffer(f)}
+async function toImgs(f){
+ if(f.type.startsWith('image/'))return [f];
+ const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;const out=[];
+ for(let i=1;i<=Math.min(pdf.numPages,4);i++){const pg=await pdf.getPage(i);const vp=pg.getViewport({scale:3});const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;out.push(await new Promise(r=>c.toBlob(r,'image/jpeg',.92)))}
+ return out}
+function fill(j){const g=j.gatas||[];
+ $('name').value=(j.village||'')+(j.khata_no?' - Khata '+j.khata_no:'');
+ $('village').value=j.village||'';$('tehsil').value=j.tehsil||'';$('district').value=j.district||'';$('state').value=j.state||'Uttar Pradesh';
+ $('survey').value=(j.khata_no?'Khata '+j.khata_no:'')+(g.length?' / Gata '+g.map(x=>x.gata_no).join(', '):'');
+ const a=g.reduce((s,x)=>s+(+x.area_hectare||0),0);$('area').value=a?+a.toFixed(6):'';$('unit').value='Hectare';
+ const seen=new Set(),o=[];g.forEach(x=>(x.khatedars||[]).forEach(k=>{const t=k.name+(k.father?' / '+k.father:'');if(!seen.has(t)){seen.add(t);o.push(t)}}));
+ $('owners').value=o.join('\n');
+ $('notes').value=''}
+async function ocr(imgs,s){
+ const w=await Tesseract.createWorker(['hin','eng'],1,{logger:m=>{if(m.status)s.textContent='Reading khatauni: '+m.status+' '+Math.round((m.progress||0)*100)+'%'}});
+ await w.setParameters({tessedit_pageseg_mode:'6'});
+ let t='';for(const b of imgs){const r=await w.recognize(b);t+=r.data.text+'\n'}
+ await w.terminate();return t}
+function parseKh(t){
+ t=t.replace(/[|]/g,' ');const L=t.split('\n').map(x=>x.trim()).filter(Boolean);const j={gatas:[]};
+ let m=t.match(/जनपद\s*[:：]\s*(.+?)\s+तहसील\s*[:：]\s*(.+?)\s+ग्राम\s*[:：]\s*([^\n]+)/);
+ if(m){j.district=m[1].trim();j.tehsil=m[2].trim();j.village=m[3].trim()}
+ m=t.match(/खाता\s*संख्या\s*[:：]\s*(\d+)/);if(m)j.khata_no=m[1];
+ if(/Uttar Pradesh/i.test(t)||/उत्तर प्रदेश/.test(t))j.state='Uttar Pradesh';
+ const AR=/\b(\d\.\d{6})\b/;let g=null;
+ L.forEach((l,i)=>{const o=l.match(/^(?:(\d+)\s+)?(?:\d*\s*[\)）]\s*)?([^\/]+?)\s*\/\s*([^\/]+?)\s*\/\s*नि[\.\s]/);if(!o)return;
+  if(o[1]||!g){g={gata_no:o[1]||'',area_hectare:0,khatedars:[]};j.gatas.push(g);
+   let a=l.match(AR);for(let k=1;!a&&k<=5&&L[i+k];k++)a=L[i+k].match(AR);if(a)g.area_hectare=+a[1]}
+  g.khatedars.push({name:o[2].trim(),father:o[3].trim()})});
+ if(j.gatas.length&&!j.gatas.some(x=>x.area_hectare)){const a=t.match(AR);if(a)j.gatas[0].area_hectare=+a[1]}
+ return j}
+async function khatauni(f){
+ ed(null);pend=f;const s=$('st2');s.textContent='Reading khatauni... this can take a minute.';
+ try{const imgs=await toImgs(f);const t=await ocr(imgs,s);const j=parseKh(t);if(!j.village&&!j.gatas.length)throw new Error('nothing recognised');fill(j);
+  s.textContent='Auto-filled by reading the khatauni image. Hindi text reading can make mistakes, so please check village, numbers, area and every co-owner name before saving. The khatauni is attached as the land record.'
+ }catch(e){s.textContent='Could not read it automatically ('+(e.message||e.code||'error')+'). The file is attached as the land record; fill the details by hand.'}
+}
+$('gs').onclick=()=>{$('g_repo').value=cfg.repo||'';$('g_br').value=cfg.branch||'main';$('g_tok').value=cfg.token||'';$('gd').showModal()};
+$('g_cn').onclick=()=>$('gd').close();
+$('g_sv').onclick=()=>{cfg={repo:$('g_repo').value.trim(),branch:$('g_br').value.trim()||'main',token:$('g_tok').value.trim()};
+ try{localStorage.setItem('lp_gh',JSON.stringify(cfg))}catch(e){}
+ $('gd').close();init()};
+$('kh').onclick=()=>$('khf').click();$('khf').onchange=e=>{if(e.target.files[0])khatauni(e.target.files[0]);e.target.value=''};
+$('add').onclick=()=>ed(null);$('cn').onclick=()=>$('dlg').close();$('sv').onclick=sv;$('vx').onclick=()=>$('vw').close();
+$('xl').onclick=exp;$('imp').onclick=()=>$('impf').click();$('impf').onchange=e=>{if(e.target.files[0])imp(e.target.files[0]);e.target.value=''};
+$('q').oninput=render;$('vf').onchange=render;
+load();render();init();
+</script></main></body></html>
